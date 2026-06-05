@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Гайд: Beeline CDN + Xray + Self-steal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#080a0f;
+  --surface:#0d1117;
+  --surface2:#121822;
+  --border:#1c2230;
+  --border2:#2a3344;
+  --accent:#00e5ff;
+  --accent-dim:#0a7d8c;
+  --ok:#22c55e;
+  --warn:#f59e0b;
+  --danger:#ef4444;
+  --text:#e8edf5;
+  --muted:#8a96a8;
+  --muted2:#4a5568;
+  --mono:'Space Mono',monospace;
+  --sans:'DM Sans',sans-serif;
+}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);line-height:1.6;min-height:100vh}
+
+.grain{position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.03;
+  background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");background-size:128px}
+
+.wrap{position:relative;z-index:1;max-width:920px;margin:0 auto;padding:2rem 1.5rem 6rem}
+
+header{text-align:center;padding:3rem 0 2rem;border-bottom:1px solid var(--border);margin-bottom:2rem}
+.logo{font-family:var(--mono);font-size:1rem;letter-spacing:.2em;color:var(--accent);margin-bottom:1rem}
+h1{font-family:var(--mono);font-size:clamp(1.6rem,4vw,2.4rem);font-weight:700;letter-spacing:-.01em;margin-bottom:.75rem;line-height:1.2}
+.subtitle{color:var(--muted);font-size:1rem;font-weight:300;max-width:60ch;margin:0 auto}
+.scheme{font-family:var(--mono);font-size:.75rem;color:var(--muted2);margin-top:1.5rem;letter-spacing:.03em}
+.scheme b{color:var(--accent-dim)}
+
+/* INPUT PANEL */
+.panel{position:sticky;top:0;z-index:50;background:rgba(13,17,23,.96);backdrop-filter:blur(12px);border:1px solid var(--border2);border-radius:14px;padding:1.5rem;margin-bottom:2.5rem;box-shadow:0 8px 32px rgba(0,0,0,.4)}
+.panel-head{display:flex;align-items:center;gap:.6rem;margin-bottom:1.25rem;font-family:var(--mono);font-size:.8rem;letter-spacing:.1em;color:var(--accent);text-transform:uppercase}
+.panel-head .ico{width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 10px var(--accent)}
+.fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:1rem}
+.field{display:flex;flex-direction:column;gap:.35rem}
+.field label{font-size:.75rem;color:var(--muted);font-weight:500;letter-spacing:.02em}
+.field label .hint{color:var(--muted2);font-weight:300;font-size:.7rem}
+.field input{background:var(--bg);border:1px solid var(--border2);border-radius:8px;padding:.6rem .75rem;color:var(--text);font-family:var(--mono);font-size:.82rem;transition:border-color .15s,box-shadow .15s}
+.field input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(0,229,255,.12)}
+.field input::placeholder{color:var(--muted2)}
+.panel-actions{display:flex;gap:.75rem;margin-top:1.25rem;flex-wrap:wrap}
+.btn{font-family:var(--mono);font-size:.75rem;letter-spacing:.05em;padding:.6rem 1.2rem;border-radius:8px;cursor:pointer;transition:all .15s;border:1px solid var(--border2);background:transparent;color:var(--muted)}
+.btn:hover{color:var(--text);border-color:var(--muted)}
+.btn-accent{background:var(--accent);color:#000;border-color:var(--accent);font-weight:700}
+.btn-accent:hover{opacity:.85;color:#000}
+
+/* PANEL SWITCHER */
+.switcher{display:flex;gap:.5rem;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:.4rem;margin-bottom:2.5rem;max-width:420px}
+.switcher button{flex:1;font-family:var(--mono);font-size:.85rem;padding:.7rem;border:none;border-radius:7px;background:transparent;color:var(--muted);cursor:pointer;transition:all .15s;letter-spacing:.05em}
+.switcher button.active{background:var(--accent);color:#000;font-weight:700}
+
+/* STEPS */
+.step{margin-bottom:2.5rem;border:1px solid var(--border);border-radius:14px;overflow:hidden;background:var(--surface)}
+.step-head{display:flex;align-items:center;gap:1rem;padding:1.25rem 1.5rem;background:var(--surface2);border-bottom:1px solid var(--border);cursor:pointer;user-select:none}
+.step-num{flex-shrink:0;width:34px;height:34px;border-radius:9px;background:var(--bg);border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-weight:700;font-size:.9rem;color:var(--accent)}
+.step-title{flex:1;font-weight:600;font-size:1.05rem}
+.step-title .tag{display:inline-block;margin-left:.5rem;font-family:var(--mono);font-size:.6rem;letter-spacing:.1em;padding:.15rem .5rem;border-radius:4px;background:var(--bg);color:var(--muted);border:1px solid var(--border2);vertical-align:middle}
+.step-chevron{color:var(--muted2);font-size:1.2rem;transition:transform .2s}
+.step.collapsed .step-chevron{transform:rotate(-90deg)}
+.step-body{padding:1.5rem}
+.step.collapsed .step-body{display:none}
+.step-body p{color:var(--muted);font-size:.92rem;margin-bottom:1rem}
+.step-body p:last-child{margin-bottom:0}
+.step-body strong{color:var(--text);font-weight:500}
+.step-body code{font-family:var(--mono);font-size:.85em;background:var(--bg);padding:.1rem .4rem;border-radius:4px;color:var(--accent);border:1px solid var(--border)}
+.step-body ul{margin:0 0 1rem 1.2rem;color:var(--muted);font-size:.92rem}
+.step-body li{margin-bottom:.4rem}
+
+/* CODE BLOCKS */
+.code{position:relative;background:var(--bg);border:1px solid var(--border2);border-radius:10px;margin:1rem 0;overflow:hidden}
+.code-head{display:flex;align-items:center;justify-content:space-between;padding:.5rem .9rem;background:var(--surface2);border-bottom:1px solid var(--border)}
+.code-label{font-family:var(--mono);font-size:.68rem;letter-spacing:.08em;color:var(--muted);text-transform:uppercase}
+.copy-btn{font-family:var(--mono);font-size:.68rem;letter-spacing:.05em;padding:.3rem .7rem;border-radius:5px;border:1px solid var(--border2);background:transparent;color:var(--accent);cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:.35rem}
+.copy-btn:hover{background:var(--accent);color:#000}
+.copy-btn.copied{background:var(--ok);color:#000;border-color:var(--ok)}
+.code pre{padding:1rem;overflow-x:auto;font-family:var(--mono);font-size:.8rem;line-height:1.6;color:#cdd6e3}
+.code pre .v{color:var(--accent);font-weight:700;background:rgba(0,229,255,.08);padding:0 2px;border-radius:3px}
+
+/* CALLOUTS */
+.note{border-left:3px solid;border-radius:0 8px 8px 0;padding:.9rem 1.1rem;margin:1rem 0;font-size:.88rem;background:var(--surface2)}
+.note.info{border-color:var(--accent)}
+.note.warn{border-color:var(--warn)}
+.note.danger{border-color:var(--danger)}
+.note-title{font-family:var(--mono);font-size:.7rem;letter-spacing:.08em;text-transform:uppercase;margin-bottom:.4rem;font-weight:700}
+.note.info .note-title{color:var(--accent)}
+.note.warn .note-title{color:var(--warn)}
+.note.danger .note-title{color:var(--danger)}
+.note p{margin:0;color:var(--muted)}
+.note code{font-family:var(--mono);font-size:.85em;background:var(--bg);padding:.1rem .35rem;border-radius:4px;color:var(--text)}
+
+.expect{font-family:var(--mono);font-size:.78rem;color:var(--ok);background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.2);border-radius:7px;padding:.6rem .9rem;margin:.75rem 0}
+.expect b{color:var(--ok)}
+
+.panel-only{display:none}
+.panel-only.show{display:block}
+
+footer{text-align:center;padding:3rem 0 1rem;border-top:1px solid var(--border);margin-top:3rem;color:var(--muted2);font-family:var(--mono);font-size:.7rem;letter-spacing:.05em}
+
+@media(max-width:640px){
+  .wrap{padding:1rem 1rem 4rem}
+  .fields{grid-template-columns:1fr}
+  .panel{position:static}
+  .step-body{padding:1rem}
+}
+</style>
+</head>
+<body>
+<div class="grain"></div>
+<div class="wrap">
+
+<header>
+  <div class="logo">CDN/VPN · DEPLOYMENT GUIDE</div>
+  <h1>Beeline CDN + Xray + Self-steal</h1>
+  <p class="subtitle">Пошаговая установка схемы маскировки трафика через CDN. Впиши свои данные в панель ниже — конфиги соберутся автоматически.</p>
+  <div class="scheme">Клиент → <b>Beeline CDN:443</b> → <b>ORIGIN:443</b> → nginx → <b>127.0.0.1:LOCAL_PORT</b> → Xray → freedom</div>
+</header>
+
+<!-- INPUT PANEL -->
+<div class="panel">
+  <div class="panel-head"><span class="ico"></span> Твои данные</div>
+  <div class="fields">
+    <div class="field">
+      <label>ORIGIN-домен <span class="hint">прямой домен VPS</span></label>
+      <input type="text" data-var="ORIGIN" placeholder="origin-node.example.net" value="">
+    </div>
+    <div class="field">
+      <label>IP сервера <span class="hint">VPS_IP</span></label>
+      <input type="text" data-var="VPS_IP" placeholder="203.0.113.10" value="">
+    </div>
+    <div class="field">
+      <label>CDN-домен <span class="hint">технический от Beeline</span></label>
+      <input type="text" data-var="CDN" placeholder="abc123xyz.a.trbcdn.net" value="">
+    </div>
+    <div class="field">
+      <label>Локальный порт <span class="hint">Xray inbound</span></label>
+      <input type="text" data-var="LOCAL_PORT" placeholder="4443" value="4443">
+    </div>
+    <div class="field">
+      <label>XHTTP-путь <span class="hint">со слэшем в конце</span></label>
+      <input type="text" data-var="PATH" placeholder="/api/uploadFile/" value="/api/uploadFile/">
+    </div>
+    <div class="field">
+      <label>Node Port <span class="hint">только для Remnawave</span></label>
+      <input type="text" data-var="NODE_PORT" placeholder="2222" value="2222">
+    </div>
+  </div>
+  <div class="panel-actions">
+    <button class="btn btn-accent" onclick="saveData()">Сохранить данные</button>
+    <button class="btn" onclick="clearData()">Сбросить</button>
+    <button class="btn" onclick="toggleAll()">Свернуть/развернуть всё</button>
+  </div>
+</div>
+
+<!-- PANEL SWITCHER -->
+<div class="switcher">
+  <button class="active" data-panel="remna" onclick="switchPanel('remna')">Remnawave</button>
+  <button data-panel="3xui" onclick="switchPanel('3xui')">3x-ui</button>
+</div>
+
+<div id="steps"></div>
+
+<footer>RV///PN · собрано для внутреннего пользования · храни этот файл локально</footer>
+
+</div>
+
+<script>
+const VARS = ['ORIGIN','VPS_IP','CDN','LOCAL_PORT','PATH','NODE_PORT'];
+let state = {ORIGIN:'',VPS_IP:'',CDN:'',LOCAL_PORT:'4443',PATH:'/api/uploadFile/',NODE_PORT:'2222'};
+let currentPanel = 'remna';
+
+function readInputs(){
+  document.querySelectorAll('input[data-var]').forEach(i=>{ state[i.dataset.var] = i.value.trim(); });
+}
+function placeholders(){
+  return {
+    ORIGIN: state.ORIGIN || 'origin-node.example.net',
+    VPS_IP: state.VPS_IP || '203.0.113.10',
+    CDN: state.CDN || 'abc123xyz.a.trbcdn.net',
+    LOCAL_PORT: state.LOCAL_PORT || '4443',
+    PATH: state.PATH || '/api/uploadFile/',
+    NODE_PORT: state.NODE_PORT || '2222'
+  };
+}
+// HTML-escape helper
+function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+// substitute {{VAR}} and wrap filled values in highlight span.
+// IMPORTANT: escape the ENTIRE text (bash commands contain <, >, & like 2>&1),
+// then replace the (now-escaped) placeholders with highlighted escaped values.
+function subst(text){
+  const p = placeholders();
+  let out = esc(text); // escape everything first — placeholders {{X}} survive (no special chars)
+  return out.replace(/\{\{(\w+)\}\}/g, (m,k)=>{
+    const val = p[k] !== undefined ? p[k] : m;
+    const filled = state[k] && state[k].length>0;
+    const v = esc(val);
+    return filled ? '<span class="v">'+v+'</span>' : v;
+  });
+}
+// raw substitution for clipboard (no html)
+function substRaw(text){
+  const p = placeholders();
+  return text.replace(/\{\{(\w+)\}\}/g,(m,k)=> p[k]!==undefined ? p[k] : m);
+}
+
+function codeBlock(label, content){
+  const id = 'c'+Math.random().toString(36).slice(2,9);
+  return `<div class="code">
+    <div class="code-head">
+      <span class="code-label">${label}</span>
+      <button class="copy-btn" data-raw="${encodeURIComponent(content)}" onclick="doCopy(this)">копировать</button>
+    </div>
+    <pre id="${id}">${subst(content)}</pre>
+  </div>`;
+}
+
+function doCopy(btn){
+  const raw = substRaw(decodeURIComponent(btn.dataset.raw));
+  navigator.clipboard.writeText(raw).then(()=>{
+    btn.textContent='скопировано ✓'; btn.classList.add('copied');
+    setTimeout(()=>{ btn.textContent='копировать'; btn.classList.remove('copied'); },1600);
+  }).catch(()=>{
+    const ta=document.createElement('textarea'); ta.value=raw; document.body.appendChild(ta);
+    ta.select(); document.execCommand('copy'); ta.remove();
+    btn.textContent='скопировано ✓'; btn.classList.add('copied');
+    setTimeout(()=>{ btn.textContent='копировать'; btn.classList.remove('copied'); },1600);
+  });
+}
+
+function note(type,title,html){
+  return `<div class="note ${type}"><div class="note-title">${title}</div><p>${html}</p></div>`;
+}
+function expect(html){ return `<div class="expect">${html}</div>`; }
+
+// ============ STEP DEFINITIONS ============
+// each step: {n, title, tag, panels:['remna','3xui','both'], body: ()=>html}
+const STEPS = [
+  {
+    n:'01', title:'DNS и подготовка', tag:'both',
+    body:()=>`
+      <p>ORIGIN-домен ведёт <strong>напрямую</strong> на VPS (A-запись). CDN-домен от Beeline пока трогать не нужно.</p>
+      ${codeBlock('DNS-запись','{{ORIGIN}}   A   {{VPS_IP}}')}
+      <p>Проверь что DNS доехал:</p>
+      ${codeBlock('bash','dig +short {{ORIGIN}}')}
+      ${expect('Должен вернуться <b>{{VPS_IP}}</b>')}
+    `
+  },
+  {
+    n:'02', title:'Базовые пакеты + сертификат', tag:'both',
+    body:()=>`
+      <p>Ставим certbot и инструменты:</p>
+      ${codeBlock('bash',`apt update
+apt install -y certbot curl nano dnsutils`)}
+      <p>Ставим Docker официальным скриптом (сам разруливает репозитории, не конфликтует с уже установленным):</p>
+      ${codeBlock('bash',`curl -fsSL https://get.docker.com | sh
+systemctl enable docker
+systemctl start docker`)}
+      ${note('info','docker уже стоит?',`Если на сервере уже есть Docker (часто предустановлен на cloud-образах) — скрипт это увидит и не сломает. Проверить: <code>docker --version</code> и <code>docker ps</code>. Если версия выводится — шаг можно пропустить. Не используй <code>apt install docker.io</code> на серверах с официальным docker-репо — будет конфликт containerd.`)}
+      <p>Выпускаем Let's Encrypt на ORIGIN-домен (порт 80 должен быть свободен):</p>
+      ${codeBlock('bash','certbot certonly --standalone -d {{ORIGIN}}')}
+      ${note('warn','если порт 80 занят',`Проверь чем: <code>ss -ltnp | grep ':80 '</code> — останови процесс, выпусти серт, запусти обратно.`)}
+      ${expect('Сертификат появится в <b>/etc/letsencrypt/live/{{ORIGIN}}/</b>')}
+    `
+  },
+  {
+    n:'03', title:'nginx в контейнере (self-steal)', tag:'both',
+    body:()=>`
+      <p>Создаём отдельный nginx-контейнер. Он отдаёт сайт-заглушку на <code>/</code> и проксирует XHTTP-путь в Xray.</p>
+      ${codeBlock('bash',`mkdir -p /opt/cdn-nginx/html
+cd /opt/cdn-nginx`)}
+      <p><strong>docker-compose.yml</strong> (сразу с поднятыми лимитами под нагрузку):</p>
+      ${codeBlock('/opt/cdn-nginx/docker-compose.yml',`services:
+  cdn-nginx:
+    image: nginx:1.28
+    container_name: cdn-nginx
+    restart: always
+    network_mode: host
+    ulimits:
+      nofile:
+        soft: 200000
+        hard: 200000
+    volumes:
+      - ./nginx-main.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - ./html:/usr/share/nginx/html:ro`)}
+      <p><strong>nginx-main.conf</strong> — главный конфиг с тюнингом (worker_connections, epoll, отключённые логи):</p>
+      ${codeBlock('bash',`cat > /opt/cdn-nginx/nginx-main.conf << 'EOF'
+user  nginx;
+worker_processes  auto;
+worker_rlimit_nofile 65535;
+error_log  /var/log/nginx/error.log notice;
+pid        /run/nginx.pid;
+
+events {
+    worker_connections  65535;
+    multi_accept on;
+    use epoll;
+}
+
+http {
+    include       /etc/nginx/mime.types;
+    default_type  application/octet-stream;
+    log_format  main  '$remote_addr - $remote_user [$time_local] "$request" '
+                      '$status $body_bytes_sent "$http_referer" "$http_user_agent"';
+    access_log  off;
+    sendfile        on;
+    tcp_nopush      on;
+    tcp_nodelay     on;
+    keepalive_timeout  65;
+    keepalive_requests 10000;
+    server_tokens off;
+    types_hash_max_size 4096;
+    include /etc/nginx/conf.d/*.conf;
+}
+EOF`)}
+      <p><strong>nginx.conf</strong> — server-блок self-steal (заглушка на <code>/</code> + туннель на XHTTP-пути):</p>
+      ${codeBlock('bash',`cat > /opt/cdn-nginx/nginx.conf << 'EOF'
+server {
+    listen 80;
+    server_name {{ORIGIN}};
+    return 301 https://$host$request_uri;
+}
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name {{ORIGIN}};
+    ssl_certificate     /etc/letsencrypt/live/{{ORIGIN}}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/{{ORIGIN}}/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+
+    location {{PATH}} {
+        proxy_pass http://127.0.0.1:{{LOCAL_PORT}};
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        add_header Cache-Control "no-store, no-cache, must-revalidate" always;
+        add_header Pragma "no-cache" always;
+        proxy_buffering off;
+        proxy_request_buffering off;
+        proxy_cache off;
+        proxy_connect_timeout 60s;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+        client_max_body_size 0;
+    }
+    location / {
+        root /usr/share/nginx/html;
+        index index.html;
+        try_files $uri $uri/ /index.html;
+        add_header Cache-Control "public, max-age=86400" always;
+    }
+}
+EOF`)}
+      <p>Теперь нужна <strong>заглушка</strong> на корень — простой сайт, который увидит любой, кто зайдёт на домен браузером. Вот готовая минимальная страница, создаётся одной командой:</p>
+      ${codeBlock('bash',`cat > /opt/cdn-nginx/html/index.html << 'EOF'
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Welcome</title>
+  <style>
+    body{margin:0;min-height:100vh;display:grid;place-items:center;
+         font-family:system-ui,Arial,sans-serif;background:#f4f6f8;color:#1f2937}
+    main{max-width:640px;padding:32px;text-align:center}
+    h1{font-size:28px;margin:0 0 12px}
+    p{margin:0;color:#6b7280}
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Welcome</h1>
+    <p>The service is running.</p>
+  </main>
+</body>
+</html>
+EOF`)}
+      ${note('info','своя заглушка — по желанию',`Этой простой страницы достаточно, чтобы домен выглядел живым. Если хочешь красивее — положи в <code>/opt/cdn-nginx/html/</code> любой свой статический сайт (index.html, css, картинки), он подхватится автоматически. Главное: используй нейтральный шаблон, не копируй чужие бренды, личные кабинеты и платёжные страницы.`)}
+      <p>Запускаем:</p>
+      ${codeBlock('bash',`cd /opt/cdn-nginx
+docker compose up -d
+docker exec cdn-nginx nginx -t
+docker restart cdn-nginx`)}
+    `
+  },
+  // STEP 4 — panel specific (Remnawave)
+  {
+    n:'04', title:'Config Profile в Remnawave', tag:'remna', panels:['remna'],
+    body:()=>`
+      <p>В панели Remnawave создай <strong>Config Profile</strong> с XHTTP-инбаундом. Tag должен быть уникальным.</p>
+      ${codeBlock('Remnawave Config Profile (JSON)',`{
+  "log": { "loglevel": "info" },
+  "dns": {
+    "servers": ["8.8.8.8", "1.1.1.1"],
+    "queryStrategy": "UseIPv4"
+  },
+  "inbounds": [
+    {
+      "tag": "XHTTP-BEELINE",
+      "port": {{LOCAL_PORT}},
+      "listen": "127.0.0.1",
+      "protocol": "vless",
+      "settings": {
+        "clients": [],
+        "decryption": "none"
+      },
+      "sniffing": {
+        "enabled": true,
+        "destOverride": ["http", "tls", "quic"]
+      },
+      "streamSettings": {
+        "network": "xhttp",
+        "security": "none",
+        "xhttpSettings": {
+          "mode": "packet-up",
+          "path": "{{PATH}}",
+          "extra": {
+            "path": "{{PATH}}",
+            "seqKey": "chunk_id",
+            "sessionKey": "X-Upload-Token",
+            "noSSEHeader": false,
+            "xPaddingKey": "hash",
+            "seqPlacement": "query",
+            "xPaddingBytes": "100-1000",
+            "xPaddingHeader": "X-Client-Version",
+            "xPaddingMethod": "tokenish",
+            "sessionPlacement": "header",
+            "uplinkHTTPMethod": "GET",
+            "xPaddingObfsMode": true,
+            "xPaddingPlacement": "queryInHeader"
+          }
+        }
+      }
+    }
+  ],
+  "outbounds": [
+    { "tag": "DIRECT", "protocol": "freedom" },
+    { "tag": "BLOCK", "protocol": "blackhole" }
+  ],
+  "routing": {
+    "rules": [
+      { "ip": ["geoip:private"], "type": "field", "outboundTag": "BLOCK" }
+    ]
+  }
+}`)}
+      ${note('info','почему GET, а не POST',`Beeline всегда разрешает GET/HEAD/OPTIONS и их нельзя запретить. POST режется и отдаёт 405. Поэтому <code>uplinkHTTPMethod: GET</code> — основной рабочий вариант.`)}
+      ${note('warn','xmux и extra',`Всё что внутри <code>extra</code> заменяет верхнеуровневые xhttpSettings (кроме host/path/mode). Не выноси параметры наружу — они молча проигнорируются.`)}
+      ${note('info','DNS-блок чинит скорость',`Блок <code>dns</code> с <code>UseIPv4</code> убирает залипания резолва (видео тормозит на 2-7 сек). Применяется на сервере для всех клиентов сразу.`)}
+    `
+  },
+  {
+    n:'05', title:'Создание и запуск ноды', tag:'remna', panels:['remna'],
+    body:()=>`
+      <p>В панели: <strong>Nodes → Add node</strong>. Address: <code>{{ORIGIN}}</code>, Port: <code>{{NODE_PORT}}</code>, Config Profile: тот что создал. Панель выдаст готовый <code>docker-compose.yml</code> с твоим <code>SECRET_KEY</code>.</p>
+      ${codeBlock('bash',`mkdir -p /opt/remnanode && cd /opt/remnanode`)}
+      <p><strong>Вариант А</strong> — вставь YAML, который выдала панель (подставь его между EOF):</p>
+      ${codeBlock('bash',`cat > /opt/remnanode/docker-compose.yml << 'EOF'
+# СЮДА вставь docker-compose.yml из панели Remnawave
+EOF`)}
+      <p><strong>Вариант Б</strong> — если хочешь собрать вручную, замени <code>PASTE_SECRET_KEY_HERE</code> на ключ из панели:</p>
+      ${codeBlock('bash',`cat > /opt/remnanode/docker-compose.yml << 'EOF'
+services:
+  remnanode:
+    image: remnawave/node:latest
+    container_name: remnanode
+    hostname: remnanode
+    restart: always
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+    environment:
+      - NODE_PORT={{NODE_PORT}}
+      - SECRET_KEY=PASTE_SECRET_KEY_HERE
+    volumes:
+      - /dev/shm:/dev/shm:rw
+EOF`)}
+      <p>Запускаем:</p>
+      ${codeBlock('bash',`cd /opt/remnanode
+docker compose up -d
+docker ps`)}
+      <p>Проверь что порты слушаются:</p>
+      ${codeBlock('bash',`ss -tulpn | grep {{NODE_PORT}}
+ss -tulpn | grep {{LOCAL_PORT}}`)}
+      ${expect('<b>{{NODE_PORT}}</b> слушает remnanode API, <b>{{LOCAL_PORT}}</b> слушает Xray inbound. Если 4443 нет — профиль не применился к ноде.')}
+    `
+  },
+  // STEP 4 alt — 3x-ui
+  {
+    n:'04', title:'Установка 3x-ui', tag:'3xui', panels:['3xui'],
+    body:()=>`
+      <p>3x-ui — это монолит: панель и Xray на одном сервере. Ставим прямо на этот VPS.</p>
+      ${codeBlock('bash','bash <(curl -Ls https://raw.githubusercontent.com/mhsanaei/3x-ui/master/install.sh)')}
+      <p>Скрипт спросит логин/пароль/порт панели. Запиши их. После установки зайди в панель по <code>http://{{VPS_IP}}:ПОРТ_ПАНЕЛИ</code>.</p>
+      ${note('danger','проверь версию Xray',`3x-ui тянет свою версию Xray. Для поддержки <code>extra</code>/xmux нужна <strong>26.3.27+</strong>. В панели: Settings → Xray Version. Если старее — обнови, иначе <code>extra</code> не распарсится.`)}
+    `
+  },
+  {
+    n:'05', title:'XHTTP-инбаунд в 3x-ui', tag:'3xui', panels:['3xui'],
+    body:()=>`
+      <p>В панели: <strong>Inbounds → Add Inbound</strong>. Заполни базовое:</p>
+      <ul>
+        <li>Protocol: <code>vless</code></li>
+        <li>Listen IP: <code>127.0.0.1</code></li>
+        <li>Port: <code>{{LOCAL_PORT}}</code></li>
+        <li>Transport: <code>xhttp</code>, Security: <code>none</code></li>
+        <li>Path: <code>{{PATH}}</code>, Mode: <code>packet-up</code></li>
+      </ul>
+      ${note('warn','поле extra',`Если в UI нет поля под <code>extra</code> — открой raw/advanced режим streamSettings и вставь JSON ниже целиком. Без raw-режима xmux не задать.`)}
+      <p><strong>streamSettings</strong> для raw-режима:</p>
+      ${codeBlock('streamSettings (JSON)',`{
+  "network": "xhttp",
+  "security": "none",
+  "xhttpSettings": {
+    "mode": "packet-up",
+    "path": "{{PATH}}",
+    "extra": {
+      "path": "{{PATH}}",
+      "seqKey": "chunk_id",
+      "sessionKey": "X-Upload-Token",
+      "noSSEHeader": false,
+      "xPaddingKey": "hash",
+      "seqPlacement": "query",
+      "xPaddingBytes": "100-1000",
+      "xPaddingHeader": "X-Client-Version",
+      "xPaddingMethod": "tokenish",
+      "sessionPlacement": "header",
+      "uplinkHTTPMethod": "GET",
+      "xPaddingObfsMode": true,
+      "xPaddingPlacement": "queryInHeader"
+    }
+  }
+}`)}
+      <p>Включи <strong>Sniffing</strong> в настройках инбаунда (destOverride: http, tls, quic) — иначе часть фич не работает. Создай клиента, забери его VLESS-ссылку.</p>
+      ${expect('После сохранения проверь: <b>ss -tulpn | grep {{LOCAL_PORT}}</b> — порт должен слушаться.')}
+    `
+  },
+  {
+    n:'06', title:'Проверка origin до CDN', tag:'both',
+    body:()=>`
+      <p>Прежде чем подключать Beeline — origin должен сам по себе отдавать 400 на XHTTP-пути и заглушку на корне.</p>
+      ${codeBlock('bash',`curl -vk http://127.0.0.1:{{LOCAL_PORT}}{{PATH}}
+curl -sk https://{{ORIGIN}}/ | grep -i '<title>'
+curl -vk https://{{ORIGIN}}{{PATH}} 2>&1 | grep 'HTTP/'`)}
+      ${expect('<b>/</b> → 200 + твой лендинг &nbsp;·&nbsp; <b>{{PATH}}</b> → 400')}
+      ${note('warn','если не 400',`Пока origin напрямую не даёт 400 на XHTTP-пути — Beeline подключать рано. Чини nginx location, порт {{LOCAL_PORT}}, профиль/инбаунд.`)}
+    `
+  },
+  {
+    n:'07', title:'Создание ресурса в Beeline', tag:'both',
+    body:()=>`
+      <p>На <code>cdn.beeline.ru</code> → CDN → создать ресурс HTTP-кеширования. Тип: <strong>Большие файлы</strong>.</p>
+      <p>В разделе <strong>Источник</strong>:</p>
+      <ul>
+        <li>Адрес источника: <code>{{VPS_IP}}:443</code></li>
+        <li>Использовать HTTPS при запросе к источникам: <strong>включено</strong></li>
+        <li>Проверять сертификат источника: <strong>выключено</strong> (на первый запуск)</li>
+        <li>Указать имя SNI-хоста: <strong>включено</strong></li>
+        <li>Имя SNI-хоста: <code>{{ORIGIN}}</code></li>
+        <li>Hostname при запросе к источнику: <code>{{ORIGIN}}</code></li>
+      </ul>
+      ${note('info','почему IP + SNI',`Источник указан как IP, а серт выпущен на домен. Без SNI/Hostname CDN получит не тот сертификат или не тот server-блок nginx → 502. SNI это чинит.`)}
+    `
+  },
+  {
+    n:'08', title:'Настройки Beeline (отключаем лишнее)', tag:'both',
+    body:()=>`
+      <p>В экспертных настройках ресурса выключи всё, что мешает туннелю:</p>
+      <ul>
+        <li>Кеширование — <strong>выключить</strong> (или не кешировать XHTTP-путь)</li>
+        <li>Secure token — выключить</li>
+        <li>AWS-авторизация — выключить</li>
+        <li>Ограничения доступа — выключить</li>
+        <li>CORS-проверка — выключить</li>
+        <li>HTTP/3 — <strong>выключить</strong> (на первый запуск)</li>
+        <li>Gzip / Brotli / оптимизации — выключить</li>
+        <li>HTTP-методы — не рассчитывай на POST, рабочий вариант GET</li>
+      </ul>
+      ${note('warn','HTTP/2 обязателен, HTTP/3 выключить',`HTTP/2 должен быть включён. HTTP/3 на старте выключай — он даёт нестабильность на packet-up. После сохранения подожди применения 10-15 минут.`)}
+    `
+  },
+  {
+    n:'09', title:'Проверка через CDN', tag:'both',
+    body:()=>`
+      <p>Проверь технический домен Beeline:</p>
+      ${codeBlock('bash','curl -vk https://{{CDN}}{{PATH}} 2>&1 | grep -E "HTTP/|x-cdn"')}
+      ${expect('<b>HTTP/2 400</b> + <b>x-cdn-edge-cache: MISS</b> — значит цепь CDN → origin → nginx → Xray работает')}
+      <p>И что заглушка отдаётся на корне:</p>
+      ${codeBlock('bash','curl -sk https://{{CDN}}/ | grep -i "<title>"')}
+      ${note('danger','если CDN отдаёт старый сайт',`Очисти кеш CDN в панели. XHTTP-путь не должен кешироваться (Cache-Control: no-store стоит в nginx).`)}
+      ${note('warn','если 502',`Источник = {{VPS_IP}}:443, HTTPS к источнику включён, SNI-хост = {{ORIGIN}}, origin напрямую даёт 400, nginx запущен, firewall не закрывает 443.`)}
+    `
+  },
+  {
+    n:'10', title:'Host / клиент в панели', tag:'remna', panels:['remna'],
+    body:()=>`
+      <p>Когда CDN даёт 400 — создавай Host в Remnawave:</p>
+      <ul>
+        <li>Inbound: <code>XHTTP-BEELINE</code></li>
+        <li>Address: <code>{{CDN}}</code></li>
+        <li>Port: <code>443</code></li>
+        <li>SNI: <code>{{CDN}}</code></li>
+        <li>Host: <code>{{CDN}}</code></li>
+        <li>Path: <code>{{PATH}}</code></li>
+        <li>Security Layer: <code>TLS</code></li>
+        <li>ALPN: <code>h2,http/1.1</code></li>
+        <li>Fingerprint: <code>chrome</code></li>
+      </ul>
+      <p><strong>xHTTP extra params</strong> в Host (должны совпадать с серверным extra):</p>
+      ${codeBlock('Host → xHTTP extra params',`{
+  "path": "{{PATH}}",
+  "seqKey": "chunk_id",
+  "sessionKey": "X-Upload-Token",
+  "noSSEHeader": false,
+  "xPaddingKey": "hash",
+  "seqPlacement": "query",
+  "xPaddingBytes": "100-1000",
+  "xPaddingHeader": "X-Client-Version",
+  "xPaddingMethod": "tokenish",
+  "sessionPlacement": "header",
+  "uplinkHTTPMethod": "GET",
+  "xPaddingObfsMode": true,
+  "xPaddingPlacement": "queryInHeader"
+}`)}
+      <p>Сохрани, добавь Host в профиль подписки, обнови подписку у тестового юзера.</p>
+    `
+  },
+  {
+    n:'10', title:'Клиентская ссылка в 3x-ui', tag:'3xui', panels:['3xui'],
+    body:()=>`
+      <p>В 3x-ui клиент создаётся прямо в инбаунде. Но ссылку, которую генерит панель, надо вручную поправить под CDN — панель не знает про Beeline.</p>
+      <p>В VLESS-ссылке клиента замени/проверь параметры:</p>
+      <ul>
+        <li>address (хост): <code>{{CDN}}</code></li>
+        <li>port: <code>443</code></li>
+        <li>sni: <code>{{CDN}}</code></li>
+        <li>host: <code>{{CDN}}</code></li>
+        <li>path: <code>{{PATH}}</code></li>
+        <li>security: <code>tls</code>, alpn: <code>h2,http/1.1</code>, fp: <code>chrome</code></li>
+        <li>type: <code>xhttp</code>, mode: <code>packet-up</code></li>
+      </ul>
+      ${note('warn','extra в клиенте',`Клиент (Happ/v2rayN и т.д.) должен поддерживать xhttp extra. Если приложение старое — extra-параметры не подхватятся и будет N/A. Используй свежий клиент.`)}
+      <p>Готовый шаблон ссылки (подставь UUID клиента вместо <code>CLIENT_UUID</code>):</p>
+      ${codeBlock('VLESS ссылка',`vless://CLIENT_UUID@{{CDN}}:443?type=xhttp&mode=packet-up&path={{PATH}}&security=tls&sni={{CDN}}&host={{CDN}}&alpn=h2,http/1.1&fp=chrome&encryption=none#Beeline-CDN`)}
+    `
+  },
+  {
+    n:'11', title:'Оптимизация сервера (sysctl)', tag:'both',
+    body:()=>`
+      <p>Тюнинг ядра под packet-up нагрузку. BBR + буферы + быстрая переработка соединений. Применяется на лету, перезапускать ничего не надо.</p>
+      ${codeBlock('bash',`cat > /etc/sysctl.d/99-vpn-tune.conf << 'EOF'
+net.core.default_qdisc = fq
+net.ipv4.tcp_congestion_control = bbr
+net.core.somaxconn = 65535
+net.ipv4.tcp_max_syn_backlog = 8192
+net.core.netdev_max_backlog = 16384
+net.ipv4.tcp_fin_timeout = 15
+net.ipv4.tcp_tw_reuse = 1
+net.ipv4.tcp_slow_start_after_idle = 0
+net.core.rmem_max = 16777216
+net.core.wmem_max = 16777216
+net.ipv4.tcp_rmem = 4096 87380 16777216
+net.ipv4.tcp_wmem = 4096 65536 16777216
+EOF
+sysctl --system`)}
+      <p>Проверь что применилось:</p>
+      ${codeBlock('bash','sysctl net.ipv4.tcp_congestion_control net.ipv4.tcp_slow_start_after_idle net.core.rmem_max')}
+      ${expect('<b>bbr</b> · <b>0</b> · <b>16777216</b>')}
+      ${note('info','что даёт',`<code>bbr+fq</code> — лучший congestion control для канала с потерями. <code>slow_start_after_idle=0</code> — скорость не сбрасывается после пауз (важно для листания видео). Буферы 16MB — больше throughput на длинных соединениях.`)}
+    `
+  },
+  {
+    n:'12', title:'Финальная проверка', tag:'both',
+    body:()=>`
+      <p>Прогон всей цепи сверху вниз:</p>
+      ${codeBlock('bash',`# origin
+curl -sk https://{{ORIGIN}}/ | grep -i '<title>'
+curl -vk https://{{ORIGIN}}{{PATH}} 2>&1 | grep 'HTTP/'
+# CDN
+curl -sk https://{{CDN}}/ | grep -i '<title>'
+curl -vk https://{{CDN}}{{PATH}} 2>&1 | grep -E 'HTTP/|x-cdn'`)}
+      ${expect('origin / → 200 · origin {{PATH}} → 400 · CDN / → 200 · CDN {{PATH}} → 400 + MISS')}
+      <p>Затем — подключение с телефона через сгенерированную подписку/ссылку. Полистай видео. Если грузится — схема рабочая.</p>
+      ${note('info','про пинг',`Низкий пинг в этой схеме недостижим — это физика длинного маршрута (клиент → росс. edge Beeline → зарубежная нода → выход). Десятки-сотни мс будут всегда. Главное чтобы не было залипаний и обрывов.`)}
+    `
+  }
+];
+
+function renderSteps(){
+  readInputs();
+  const host = document.getElementById('steps');
+  const visible = STEPS.filter(s => !s.panels || s.panels.includes(currentPanel));
+  host.innerHTML = visible.map((s,idx)=>{
+    const tagLabel = s.tag==='remna'?'Remnawave':s.tag==='3xui'?'3x-ui':'';
+    const tagHtml = tagLabel?`<span class="tag">${tagLabel}</span>`:'';
+    return `<div class="step" data-idx="${idx}">
+      <div class="step-head" onclick="toggleStep(this)">
+        <div class="step-num">${s.n}</div>
+        <div class="step-title">${s.title}${tagHtml}</div>
+        <div class="step-chevron">▾</div>
+      </div>
+      <div class="step-body">${substInline(s.body())}</div>
+    </div>`;
+  }).join('');
+}
+
+// Substitute {{VAR}} that remain in plain text (inside <li>, <p>, notes).
+// Placeholders inside <pre> code blocks are already resolved by codeBlock/subst,
+// so none remain there — safe to run over the whole body HTML.
+function substInline(htmlStr){
+  const p = placeholders();
+  return htmlStr.replace(/\{\{(\w+)\}\}/g, (m,k)=>{
+    const val = p[k] !== undefined ? p[k] : m;
+    const filled = state[k] && state[k].length>0;
+    const v = esc(val);
+    return filled ? '<span class="v">'+v+'</span>' : v;
+  });
+}
+
+function rerenderKeepCollapse(){
+  const collapsed = new Set();
+  document.querySelectorAll('.step').forEach((el,i)=>{ if(el.classList.contains('collapsed')) collapsed.add(i); });
+  renderSteps();
+  document.querySelectorAll('.step').forEach((el,i)=>{ if(collapsed.has(i)) el.classList.add('collapsed'); });
+}
+
+function toggleStep(head){ head.parentElement.classList.toggle('collapsed'); }
+function toggleAll(){
+  const steps=document.querySelectorAll('.step');
+  const anyOpen=[...steps].some(s=>!s.classList.contains('collapsed'));
+  steps.forEach(s=> anyOpen ? s.classList.add('collapsed') : s.classList.remove('collapsed'));
+}
+function switchPanel(p){
+  currentPanel=p;
+  document.querySelectorAll('.switcher button').forEach(b=>b.classList.toggle('active', b.dataset.panel===p));
+  renderSteps();
+}
+
+// live update on input
+document.querySelectorAll('input[data-var]').forEach(inp=>{
+  inp.addEventListener('input', ()=>{ rerenderKeepCollapse(); });
+});
+
+function saveData(){
+  readInputs();
+  try{
+    const data = JSON.stringify(state);
+    document.cookie = 'cdnguide='+encodeURIComponent(data)+';path=/;max-age=31536000';
+    flashSaved();
+  }catch(e){ flashSaved(); }
+}
+function flashSaved(){
+  const b=document.querySelector('.btn-accent');
+  const t=b.textContent; b.textContent='✓ Сохранено'; setTimeout(()=>b.textContent=t,1500);
+}
+function clearData(){
+  state={ORIGIN:'',VPS_IP:'',CDN:'',LOCAL_PORT:'4443',PATH:'/api/uploadFile/',NODE_PORT:'2222'};
+  document.querySelectorAll('input[data-var]').forEach(i=>{ i.value = state[i.dataset.var]||''; });
+  document.cookie='cdnguide=;path=/;max-age=0';
+  rerenderKeepCollapse();
+}
+function loadData(){
+  const m=document.cookie.match(/(?:^|; )cdnguide=([^;]*)/);
+  if(m){
+    try{
+      const d=JSON.parse(decodeURIComponent(m[1]));
+      Object.assign(state,d);
+      document.querySelectorAll('input[data-var]').forEach(i=>{ if(d[i.dataset.var]!==undefined) i.value=d[i.dataset.var]; });
+    }catch(e){}
+  }
+}
+
+loadData();
+renderSteps();
+</script>
+</body>
+</html>
